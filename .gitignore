@@ -1,0 +1,23 @@
+node_modules/
+/lerna-debug.log
+*.tsbuildinfo
+/.env
+
+/.idea
+config/rsaKeys 
+config/local.yml
+config/local-*.yml
+
+# Elastic Beanstalk Files
+.elasticbeanstalk/*
+!.elasticbeanstalk/*.cfg.yml
+!.elasticbeanstalk/*.global.yml
+lib/
+srvConfig/
+dist/
+upload/
+scripts/devops/envFiles/
+scripts/devops/envFiles/*
+scripts/devops/environments/*.env
+
+.vscode/*
