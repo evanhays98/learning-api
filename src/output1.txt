@@ -1,0 +1,571 @@
+
+
+file path : ./users/users.service.ts
+import { Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { CreateUserDto } from './dto/create-user.dto';
+import { User } from './entities/user.entity';
+
+@Injectable()
+export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
+  constructor(
+    @InjectRepository(User)
+    private readonly usersRepository: Repository<User>,
+  ) {}
+
+  create(createUserDto: CreateUserDto): Promise<User> {
+    const user = new User();
+    user.pseudo = createUserDto.pseudo;
+    user.mail = createUserDto.mail;
+    user.password = createUserDto.password;
+
+    return this.usersRepository.save(user);
+  }
+
+  async remove(id: number): Promise<void> {
+    await this.usersRepository.delete(id);
+  }
+
+  async findOne(id: number): Promise<User> {
+    return this.usersRepository.findOne({
+      where: {
+        id,
+      },
+    });
+  }
+
+  async findByMail(mail: string): Promise<User> {
+    return this.usersRepository.findOne({
+      where: {
+        mail,
+      },
+    });
+  }
+}
+
+file path : ./users/users.module.ts
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { UsersController } from './users.controller';
+import { UsersService } from './users.service';
+import { User } from './entities/user.entity';
+
+@Module({
+  imports: [TypeOrmModule.forFeature([User])],
+  providers: [UsersService],
+  controllers: [UsersController],
+  exports: [UsersService],
+})
+export class UsersModule {}
+
+file path : ./users/entities/user.entity.ts
+import {
+  BeforeInsert,
+  Column,
+  Entity,
+  PrimaryGeneratedColumn,
+  Unique,
+} from 'typeorm';
+import { Exclude } from 'class-transformer';
+import * as crypto from 'crypto';
+
+@Entity()
+export class User {
+  @BeforeInsert()
+  hashPassword() {
+    this.salt = crypto.randomBytes(16).toString('hex');
+    this.password = crypto
+      .createHmac('sha256', this.salt + this.password)
+      .digest('hex');
+  }
+
+  @PrimaryGeneratedColumn()
+  id: number;
+
+  @Column({ unique: true })
+  pseudo: string;
+
+  @Exclude()
+  @Column()
+  salt: string;
+
+  @Column({ unique: true })
+  mail: string;
+
+  @Exclude()
+  @Column()
+  password: string;
+
+  @Column({ default: true })
+  isActive: boolean;
+}
+
+file path : ./users/dto/create-user.dto.ts
+export class CreateUserDto {
+  pseudo: string;
+  mail: string;
+  password: string;
+}
+
+export class LoginUserDto {
+  mail: string;
+  password: string;
+}
+
+file path : ./users/dto/update-user.dto.ts
+import { PartialType } from '@nestjs/mapped-types';
+import { CreateUserDto } from './create-user.dto';
+
+export class UpdateUserDto extends PartialType(CreateUserDto) {}
+
+file path : ./users/users.controller.ts
+import {
+  Body,
+  Controller,
+  UseGuards,
+  Delete,
+  Get,
+  Param,
+  Post,
+} from '@nestjs/common';
+import { CreateUserDto } from './dto/create-user.dto';
+import { UsersService } from './users.service';
+import { User } from './entities/user.entity';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+
+@Controller('users')
+export class UsersController {
+  constructor(private readonly usersService: UsersService) {}
+
+  @UseGuards(JwtAuthGuard)
+  @Post()
+  create(@Body() createUserDto: CreateUserDto) {
+    return this.usersService.create(createUserDto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete(':id')
+  remove(@Param('id') id: number): Promise<void> {
+    return this.usersService.remove(id);
+  }
+}
+
+file path : ./main.ts
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+import * as session from 'express-session';
+import * as passport from 'passport';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+
+  app
+    .use(
+      session({
+        secret: 'test secret',
+        resave: false,
+        saveUninitialized: false,
+        rolling: true, // keep session alive
+        cookie: {
+          maxAge: 30 * 60 * 1000, // session expires in 1hr, refreshed by `rolling: true` option.
+          // httpOnly: true, // so that cookie can't be accessed via client-side script
+        },
+      }),
+    )
+    .enableCors();
+  app.use(passport.initialize());
+  app.use(passport.session());
+  await app.listen(3003);
+}
+
+bootstrap();
+
+file path : ./app.controller.ts
+import { Controller, Get } from '@nestjs/common';
+import { AppService } from './app.service';
+
+@Controller()
+export class AppController {
+  constructor(private readonly appService: AppService) {}
+
+  @Get()
+  getHello(): string {
+    return this.appService.getHello();
+  }
+}
+
+file path : ./app.module.ts
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { UsersModule } from './users/users.module';
+import { AuthModule } from './auth/auth.module';
+import { ChaptersModule } from './chapters/chapters.module';
+
+@Module({
+  imports: [
+    TypeOrmModule.forRoot({
+      type: 'postgres',
+      host: 'localhost',
+      port: 5432,
+      username: 'learning',
+      password: 'learning',
+      database: 'learning',
+      synchronize: true,
+      autoLoadEntities: true,
+    }),
+    UsersModule,
+    AuthModule,
+    ChaptersModule,
+  ],
+})
+export class AppModule {}
+
+file path : ./sentences/sentences.module.ts
+import { Module } from '@nestjs/common';
+import { SentencesService } from './sentences.service';
+import { SentencesController } from './sentences.controller';
+
+@Module({
+  controllers: [SentencesController],
+  providers: [SentencesService]
+})
+export class SentencesModule {}
+
+file path : ./sentences/entities/sentence.entity.ts
+import { Column, Entity, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+import { Chapter } from '../../chapters/entities/chapter.entity';
+
+@Entity()
+export class Sentence {
+  @PrimaryGeneratedColumn()
+  id: number;
+
+  @Column()
+  sentence: string;
+
+  @ManyToOne(() => Chapter, (chapter) => chapter.sentences)
+  chapter: Chapter;
+}
+
+file path : ./sentences/dto/create-sentence.dto.ts
+export class CreateSentenceDto {}
+
+file path : ./sentences/dto/update-sentence.dto.ts
+import { PartialType } from '@nestjs/mapped-types';
+import { CreateSentenceDto } from './create-sentence.dto';
+
+export class UpdateSentenceDto extends PartialType(CreateSentenceDto) {}
+
+file path : ./sentences/sentences.controller.ts
+import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { SentencesService } from './sentences.service';
+import { CreateSentenceDto } from './dto/create-sentence.dto';
+import { UpdateSentenceDto } from './dto/update-sentence.dto';
+
+@Controller('sentences')
+export class SentencesController {
+  constructor(private readonly sentencesService: SentencesService) {}
+
+  @Post()
+  create(@Body() createSentenceDto: CreateSentenceDto) {
+    return this.sentencesService.create(createSentenceDto);
+  }
+
+  @Get()
+  findAll() {
+    return this.sentencesService.findAll();
+  }
+
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.sentencesService.findOne(+id);
+  }
+
+  @Patch(':id')
+  update(@Param('id') id: string, @Body() updateSentenceDto: UpdateSentenceDto) {
+    return this.sentencesService.update(+id, updateSentenceDto);
+  }
+
+  @Delete(':id')
+  remove(@Param('id') id: string) {
+    return this.sentencesService.remove(+id);
+  }
+}
+
+file path : ./sentences/sentences.service.ts
+import { Injectable } from '@nestjs/common';
+import { CreateSentenceDto } from './dto/create-sentence.dto';
+import { UpdateSentenceDto } from './dto/update-sentence.dto';
+
+@Injectable()
+export class SentencesService {
+  create(createSentenceDto: CreateSentenceDto) {
+    return 'This action adds a new sentence';
+  }
+
+  findAll() {
+    return `This action returns all sentences`;
+  }
+
+  findOne(id: number) {
+    return `This action returns a #${id} sentence`;
+  }
+
+  update(id: number, updateSentenceDto: UpdateSentenceDto) {
+    return `This action updates a #${id} sentence`;
+  }
+
+  remove(id: number) {
+    return `This action removes a #${id} sentence`;
+  }
+}
+
+file path : ./app.service.ts
+import { Injectable } from '@nestjs/common';
+
+@Injectable()
+export class AppService {
+  getHello(): string {
+    return 'Hello World!';
+  }
+}
+
+file path : ./chapters/chapters.module.ts
+import { Module } from '@nestjs/common';
+import { ChaptersService } from './chapters.service';
+import { ChaptersController } from './chapters.controller';
+
+@Module({
+  controllers: [ChaptersController],
+  providers: [ChaptersService]
+})
+export class ChaptersModule {}
+
+file path : ./chapters/chapters.controller.ts
+import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { ChaptersService } from './chapters.service';
+import { CreateChapterDto } from './dto/create-chapter.dto';
+import { UpdateChapterDto } from './dto/update-chapter.dto';
+
+@Controller('chapters')
+export class ChaptersController {
+  constructor(private readonly chaptersService: ChaptersService) {}
+
+  @Post()
+  create(@Body() createChapterDto: CreateChapterDto) {
+    return this.chaptersService.create(createChapterDto);
+  }
+
+  @Get()
+  findAll() {
+    return this.chaptersService.findAll();
+  }
+
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.chaptersService.findOne(+id);
+  }
+
+  @Patch(':id')
+  update(@Param('id') id: string, @Body() updateChapterDto: UpdateChapterDto) {
+    return this.chaptersService.update(+id, updateChapterDto);
+  }
+
+  @Delete(':id')
+  remove(@Param('id') id: string) {
+    return this.chaptersService.remove(+id);
+  }
+}
+
+file path : ./chapters/chapters.service.ts
+import { Injectable } from '@nestjs/common';
+import { CreateChapterDto } from './dto/create-chapter.dto';
+import { UpdateChapterDto } from './dto/update-chapter.dto';
+
+@Injectable()
+export class ChaptersService {
+  create(createChapterDto: CreateChapterDto) {
+    return 'This action adds a new chapter';
+  }
+
+  findAll() {
+    return `This action returns all chapters`;
+  }
+
+  findOne(id: number) {
+    return `This action returns a #${id} chapter`;
+  }
+
+  update(id: number, updateChapterDto: UpdateChapterDto) {
+    return `This action updates a #${id} chapter`;
+  }
+
+  remove(id: number) {
+    return `This action removes a #${id} chapter`;
+  }
+}
+
+file path : ./chapters/entities/chapter.entity.ts
+import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+import { Sentence } from '../../sentences/entities/sentence.entity';
+
+@Entity()
+export class Chapter {
+  @PrimaryGeneratedColumn()
+  id: number;
+
+  @Column()
+  title: string;
+
+  @Column()
+  description: string;
+
+  @OneToMany(() => Sentence, (sentence) => sentence.chapter)
+  sentences: Sentence[];
+}
+
+file path : ./chapters/dto/update-chapter.dto.ts
+import { PartialType } from '@nestjs/mapped-types';
+import { CreateChapterDto } from './create-chapter.dto';
+
+export class UpdateChapterDto extends PartialType(CreateChapterDto) {}
+
+file path : ./chapters/dto/create-chapter.dto.ts
+export class CreateChapterDto {}
+
+file path : ./data-source.ts
+import { DataSource } from 'typeorm';
+
+export const AppDataSource = new DataSource({
+  type: 'postgres',
+  host: 'localhost',
+  port: 5432,
+  username: 'learning',
+  password: 'learning',
+  database: 'learning',
+  synchronize: true,
+  logging: true,
+  entities: ['src/**/*.entity.{ts,js}'],
+  subscribers: [],
+  migrations: [],
+});
+
+AppDataSource.initialize()
+  .then(() => {
+    // here you can start to work with your database
+  })
+  .catch((error) => console.log(error));
+
+file path : ./auth/auth.service.ts
+import {
+  HttpException,
+  HttpStatus,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { UsersService } from '../users/users.service';
+import { JwtService } from '@nestjs/jwt';
+import * as crypto from 'crypto';
+import { User } from '../users/entities/user.entity';
+import { CreateUserDto, LoginUserDto } from '../users/dto/create-user.dto';
+import { instanceToPlain } from 'class-transformer';
+
+@Injectable()
+export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
+  constructor(
+    private readonly usersService: UsersService,
+    private jwtService: JwtService,
+  ) {}
+
+  async validateLogin(mail: string, password: string): Promise<User> {
+    const user = await this.usersService.findByMail(mail);
+    this.logger.debug(user.salt);
+    if (
+      user &&
+      user.password ===
+        crypto.createHmac('sha256', user.salt + password).digest('hex')
+    ) {
+      return user;
+    }
+    this.logger.warn(
+      `Invalid credentials : \n mail: ${mail}\n password: ${password}`,
+    );
+    return null;
+  }
+
+  async loginUser(user: User) {
+    const payload = { sub: user.id, mail: user.mail };
+    const tmpSignedPayload = this.jwtService.sign(payload);
+    return {
+      access_token: tmpSignedPayload,
+      userInfo: instanceToPlain(user),
+    };
+  }
+
+  async login(loginForm: LoginUserDto) {
+    const user = await this.validateLogin(loginForm.mail, loginForm.password);
+    if (!user) {
+      throw new UnauthorizedException();
+    }
+    const payload = { mail: user.mail, sub: user.id };
+    return {
+      access_token: this.jwtService.sign(payload),
+      userInfo: instanceToPlain(user),
+    };
+  }
+
+  signup(signUpForm: CreateUserDto): Promise<{ access_token: string }> {
+    return this.usersService
+      .create(signUpForm)
+      .then((user) => {
+        return this.loginUser(user);
+      })
+      .catch((err) => {
+        this.logger.error(err);
+        throw new HttpException(err, HttpStatus.INTERNAL_SERVER_ERROR);
+      });
+  }
+
+  async getAuthInfoUser(currentUser) {
+    this.logger.debug(currentUser.id);
+    const currentUserInfo = await this.usersService.findOne(currentUser.id);
+    return instanceToPlain(currentUserInfo);
+  }
+}
+
+file path : ./auth/session.serializer.ts
+import { PassportSerializer } from '@nestjs/passport';
+import { Injectable } from '@nestjs/common';
+
+@Injectable()
+export class SessionSerializer extends PassportSerializer {
+  serializeUser(user: any, done: (err: Error, user: any) => void): any {
+    done(null, user);
+  }
+  deserializeUser(
+    payload: any,
+    done: (err: Error, payload: string) => void,
+  ): any {
+    done(null, payload);
+  }
+}
+
+file path : ./auth/strategies/jwt.strategy.ts
+import { Injectable, Logger } from '@nestjs/common';
+import { ExtractJwt, Strategy } from 'passport-jwt';
+import { PassportStrategy } from '@nestjs/passport';
+import { jwtConstants } from '../secrets/constants';
+
+@Injectable()
+export class JwtStrategy extends PassportStrategy(Strategy) {
+  private readonly logger = new Logger(JwtStrategy.name);
+
+  constructor() {
+    super({
+      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(), // Say where to find the token here we chose to set the header in bearer token

@@ -7,7 +7,7 @@ import { UsersModule } from '../users/users.module';
 import { jwtConstants } from './secrets/constants';
 import { LocalStrategy } from './strategies/local.strategy';
 import { JwtStrategy } from './strategies/jwt.strategy';
-import {SessionSerializer} from "./session.serializer";
+import { SessionSerializer } from './session.serializer';
 
 @Module({
   imports: [

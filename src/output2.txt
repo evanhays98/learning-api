@@ -1,0 +1,141 @@
+
+      ignoreExpiration: false, // We decide here to not ignore expiration and return a 401 error to the client if
+      secretOrKey: jwtConstants.secret, // Secret use to encrypt the tokens
+    });
+  }
+
+  /**
+   * Validate if the payload sent by the client is valid
+   * @param payload Payload sent by the client
+   */
+  async validate(payload: any) {
+    return { id: payload.sub, mail: payload.mail };
+  }
+}
+
+file path : ./auth/strategies/local.strategy.ts
+import { Strategy } from 'passport-local';
+import { PassportStrategy } from '@nestjs/passport';
+import {
+  Injectable,
+  Logger,
+  NotImplementedException,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { AuthService } from '../auth.service';
+
+@Injectable()
+export class LocalStrategy extends PassportStrategy(Strategy) {
+  // Logger
+  private readonly logger = new Logger(AuthService.name);
+
+  constructor(private readonly authService: AuthService) {
+    super({
+      usernameField: 'mail',
+    });
+  }
+
+  async validate(mail: string, password: string): Promise<any> {
+    const user = await this.authService.validateLogin(mail, password);
+    if (!user) {
+      throw new UnauthorizedException();
+    }
+    return user;
+  }
+}
+
+file path : ./auth/auth.module.ts
+import { Module } from '@nestjs/common';
+import { AuthService } from './auth.service';
+import { AuthController } from './auth.controller';
+import { JwtModule } from '@nestjs/jwt';
+import { PassportModule } from '@nestjs/passport';
+import { UsersModule } from '../users/users.module';
+import { jwtConstants } from './secrets/constants';
+import { LocalStrategy } from './strategies/local.strategy';
+import { JwtStrategy } from './strategies/jwt.strategy';
+import { SessionSerializer } from './session.serializer';
+
+@Module({
+  imports: [
+    UsersModule,
+    PassportModule.register({ session: true }),
+    JwtModule.register({
+      secret: jwtConstants.secret,
+      signOptions: { expiresIn: '3660s' },
+    }),
+  ],
+  controllers: [AuthController],
+  providers: [AuthService, LocalStrategy, JwtStrategy, SessionSerializer],
+})
+export class AuthModule {}
+
+file path : ./auth/auth.controller.ts
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Logger,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import { AuthService } from './auth.service';
+import { LocalAuthGuard } from './guards/local-auth.guard';
+import { CreateUserDto, LoginUserDto } from '../users/dto/create-user.dto';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+
+@Controller('auth')
+export class AuthController {
+  private readonly logger = new Logger(AuthController.name);
+
+  constructor(private readonly authService: AuthService) {}
+
+  @Get()
+  getHello(): string {
+    return 'hello';
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('me')
+  getProfile(@Req() req) {
+    this.logger.log(req.user.id + ' Wants his profile');
+    return this.authService.getAuthInfoUser(req.user);
+  }
+
+  @UseGuards(LocalAuthGuard)
+  @Post('signin')
+  async signIn(@Body() loginForm: LoginUserDto) {
+    return this.authService.login(loginForm);
+  }
+
+  @Post('signup')
+  async signUp(@Body() signUpForm) {
+    this.logger.debug(signUpForm);
+    console.log(signUpForm);
+    this.logger.log('Incoming signup...');
+    return this.authService.signup(signUpForm);
+  }
+}
+
+file path : ./auth/guards/local-auth.guard.ts
+import { Injectable } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
+
+@Injectable()
+export class LocalAuthGuard extends AuthGuard('local') {}
+
+file path : ./auth/guards/jwt-auth.guard.ts
+import { Injectable } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
+
+@Injectable()
+export class JwtAuthGuard extends AuthGuard('jwt') {}
+
+file path : ./auth/secrets/constants.ts
+// need to be added in a environement
+export const jwtConstants = {
+  secret: 'secret-jwt',
+};
+

@@ -1,4 +1,10 @@
-import { BeforeInsert, Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  BeforeInsert,
+  Column,
+  Entity,
+  PrimaryGeneratedColumn,
+  Unique,
+} from 'typeorm';
 import { Exclude } from 'class-transformer';
 import * as crypto from 'crypto';
 
@@ -6,16 +12,23 @@ import * as crypto from 'crypto';
 export class User {
   @BeforeInsert()
   hashPassword() {
-    this.password = crypto.createHmac('sha256', this.password).digest('hex');
+    this.salt = crypto.randomBytes(16).toString('hex');
+    this.password = crypto
+      .createHmac('sha256', this.salt + this.password)
+      .digest('hex');
   }
 
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column()
+  @Column({ unique: true })
   pseudo: string;
 
+  @Exclude()
   @Column()
+  salt: string;
+
+  @Column({ unique: true })
   mail: string;
 
   @Exclude()
