@@ -23,7 +23,6 @@ export class AuthService {
 
   async validateLogin(mail: string, password: string): Promise<User> {
     const user = await this.usersService.findByMail(mail);
-    this.logger.debug(user.salt);
     if (
       user &&
       user.password ===

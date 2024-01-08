@@ -1,25 +1,11 @@
-import {
-  BeforeInsert,
-  Column,
-  Entity,
-  PrimaryGeneratedColumn,
-  Unique,
-} from 'typeorm';
+import { BeforeInsert, Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 import { Exclude } from 'class-transformer';
 import * as crypto from 'crypto';
 
 @Entity()
 export class User {
-  @BeforeInsert()
-  hashPassword() {
-    this.salt = crypto.randomBytes(16).toString('hex');
-    this.password = crypto
-      .createHmac('sha256', this.salt + this.password)
-      .digest('hex');
-  }
-
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
   @Column({ unique: true })
   pseudo: string;
@@ -37,4 +23,12 @@ export class User {
 
   @Column({ default: true })
   isActive: boolean;
+
+  @BeforeInsert()
+  hashPassword() {
+    this.salt = crypto.randomBytes(16).toString('hex');
+    this.password = crypto
+      .createHmac('sha256', this.salt + this.password)
+      .digest('hex');
+  }
 }
